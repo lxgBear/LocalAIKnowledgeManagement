@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+"""识别图片文字。引擎未安装时失败，不猜测文字。"""
+
+import argparse
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lib import emit, fail
+
+
+def recognize(path):
+    binary = Path.home() / ".local/ocr/bin/tesseract"
+    data = Path.home() / ".local/ocr/share/tessdata"
+    if not binary.is_file() or not (data / "eng.traineddata").is_file():
+        fail("本机没有离线 OCR 引擎 tesseract")
+    result = subprocess.run(
+        ["arch", "-arm64", str(binary), str(path), "stdout", "--tessdata-dir", str(data)],
+        capture_output=True, check=False,
+    )
+    if result.returncode:
+        fail(result.stderr.decode("utf-8", "replace").strip() or "OCR 识别失败")
+    return result.stdout.decode("utf-8", "replace").strip()
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="zhiku-ocr")
+    parser.add_argument("--image", action="append", required=True)
+    args = parser.parse_args()
+    blocks = []
+    for image in args.image:
+        path = Path(image)
+        if not path.is_file():
+            fail(f"图片不存在：{image}")
+        text = recognize(path)
+        blocks.append({"text": text, "bbox": [0, 0, 0, 0]})
+    emit({"blocks": blocks, "text": "\n".join(block["text"] for block in blocks)})
+
+
+if __name__ == "__main__":
+    main()

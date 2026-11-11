@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "1.76.0"
+  }
+}

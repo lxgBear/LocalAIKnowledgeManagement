@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""按站点适配抓取多页内容。只写输出目录，不入库。"""
+
+import argparse
+import importlib.util
+import json
+import sys
+import urllib.request
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lib import CLIError, emit, fail
+
+
+def load_adapter(name):
+    path = Path(__file__).resolve().parent / "sites" / f"{name}.py"
+    if not path.is_file():
+        raise CLIError(f"站点适配不存在：{name}")
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="zhiku-fetch")
+    parser.add_argument("--site", required=True)
+    parser.add_argument("--url", required=True)
+    parser.add_argument("--out", required=True)
+    args = parser.parse_args()
+    try:
+        adapter = load_adapter(args.site)
+        out = Path(args.out).resolve()
+        out.mkdir(parents=True, exist_ok=True)
+        chapters = adapter.chapters(args.url)
+        resumed = any((out / f"{index:03d}.md").exists() for index, _title, _url in chapters)
+        for index, title, url in chapters:
+            target = out / f"{index:03d}.md"
+            if target.exists():
+                continue
+            with urllib.request.urlopen(url, timeout=20) as response:
+                body = response.read().decode("utf-8")
+            target.write_text(f"# {title}\n\n{body}", encoding="utf-8")
+        emit({"chapters": len(chapters), "out": str(out), "resumed": resumed})
+    except CLIError as error:
+        fail(str(error), error.code)
+    except Exception as error:
+        fail(str(error))
+
+
+if __name__ == "__main__":
+    main()
